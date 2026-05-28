@@ -29,12 +29,13 @@ static size_t  g_page_size    = 0;
  * ================================================================ */
 
 static uint64_t get_entropy(void) {
-    uint64_t v;
-    FILE *f = fopen("/dev/urandom", "r");
-    if (f) { fread(&v, sizeof(v), 1, f); fclose(f); return v; }
-    v = 0;
+    uint64_t v = 0;
     int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0) { read(fd, &v, sizeof(v)); close(fd); }
+    if (fd >= 0) {
+        ssize_t n = read(fd, &v, sizeof(v));
+        (void)n;
+        close(fd);
+    }
     return v;
 }
 
@@ -54,6 +55,20 @@ static void key_init(void) {
 }
 
 static __thread int g_in_malloc = 0;
+
+/* Get the real thread key without recursion guard */
+static uint64_t thread_key_raw(void) {
+    pthread_once(&g_key_once, key_init);
+    uint64_t *k = pthread_getspecific(g_meta_key);
+    if (!k) {
+        k = mmap(NULL, sizeof(uint64_t), PROT_READ | PROT_WRITE,
+                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (k == MAP_FAILED) return 0;
+        *k = get_entropy();
+        pthread_setspecific(g_meta_key, k);
+    }
+    return *k;
+}
 
 static uint64_t thread_key(void) {
     if (g_in_malloc) return 0; /* Recursion guard — use default key */
@@ -102,7 +117,7 @@ static atomic_uint g_meta_count = 0;
 static const int META_MAX = 1048576;
 
 static struct meta_entry *meta_slot(void) {
-    uint64_t key = thread_key();
+    uint64_t key = thread_key_raw();
     struct meta_entry *base = (struct meta_entry *)atomic_load(&g_meta_region);
     if (!base) {
         base = (struct meta_entry *)mmap(NULL, sizeof(struct meta_entry) * META_MAX,
@@ -408,7 +423,7 @@ void *ac_malloc(size_t size) {
     }
 
     /* Fill metadata */
-    uint64_t key = thread_key();
+    uint64_t key = thread_key_raw();
     meta->addr = (uint64_t)ptr ^ key;
     meta->size = size ^ key;
 
@@ -446,7 +461,7 @@ void *ac_realloc(void *ptr, size_t size) {
 void ac_free(void *ptr) {
     if (!ptr) return;
 
-    uint64_t key = thread_key();
+    uint64_t key = thread_key_raw();
 
     /* Find metadata entry */
     struct meta_entry *base = (struct meta_entry *)atomic_load(&g_meta_region);
@@ -508,7 +523,7 @@ void ac_free(void *ptr) {
 
 size_t ac_malloc_usable_size(void *ptr) {
     if (!ptr) return 0;
-    uint64_t key = thread_key();
+    uint64_t key = thread_key_raw();
     struct meta_entry *base = (struct meta_entry *)atomic_load(&g_meta_region);
     int count = atomic_load(&g_meta_count);
     for (int i = 0; i < count && i < META_MAX; i++) {
@@ -522,7 +537,7 @@ size_t ac_malloc_usable_size(void *ptr) {
 }
 
 void ac_dump_leaks(void) {
-    uint64_t key = thread_key();
+    uint64_t key = thread_key_raw();
     struct meta_entry *base = (struct meta_entry *)atomic_load(&g_meta_region);
     int count = atomic_load(&g_meta_count);
     int leaks = 0;
