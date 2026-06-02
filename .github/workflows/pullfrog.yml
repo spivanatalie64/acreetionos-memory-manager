@@ -1,0 +1,22 @@
+name: Pullfrog AI Agent
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  pullfrog_run:
+    runs-on: ubuntu-latest
+    if: github.event.issue.pull_request || github.event_name == 'pull_request' || contains(github.event.comment.body, '@pullfrog')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Pullfrog Agent
+        uses: pullfrog/pullfrog-action@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.ORGANIZATION_OPENROUTER_KEY }}

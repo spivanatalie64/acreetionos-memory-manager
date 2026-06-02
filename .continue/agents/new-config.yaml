@@ -1,0 +1,38 @@
+name: Budget-Config
+version: 1.0.0
+schema: v1
+
+models:
+  - name: "Qwen3-235B (DeepInfra)"
+    provider: "openai"
+    model: "Qwen/Qwen3-235B-A22B-Instruct-2507"
+    apiBase: "https://api.deepinfra.com/v1/openai"
+    apiKey: "${env:DEEPINFRA_API_KEY}"
+    contextLength: 250000
+    roles:
+      - chat
+      - edit
+
+  - name: "DeepSeek V4 Flash"
+    provider: "openai"
+    model: "deepseek-v4-flash"
+    apiBase: "https://api.deepseek.com/v1"
+    apiKey: "${env:DEEPSEEK_API_KEY}"
+    contextLength: 1000000
+    roles:
+      - chat
+
+tabAutocompleteModel:
+  name: "DeepSeek Flash Auto"
+  provider: "openai"
+  model: "deepseek-v4-flash"
+  apiBase: "https://api.deepseek.com/v1"
+  apiKey: "${env:DEEPSEEK_API_KEY}"
+  roles:
+    - autocomplete
+
+context:
+  - provider: "file"
+  - provider: "code"
+  - provider: "terminal"
+  - provider: "diff"
